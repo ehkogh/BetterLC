@@ -140,6 +140,8 @@ Lunar's own launcher sends its own handshake. Its `LauncherHandshake` fields inc
 
 Download `BetterLC.exe` from the [latest release](https://github.com/ehkogh/BetterLC/releases/latest) and run it. Pick a Minecraft version, loader and connection, then click **Launch**. The first launch shows a Microsoft one-time code; later launches reuse your saved sign-in, and **Sign out** removes it. You need a Minecraft: Java Edition account.
 
+Each release comes with a `.sha256` file you can check the download against. BetterLC isn't code-signed yet, so Windows may warn you the first time you run it. Windows Defender's machine-learning scanner has also flagged builds before (`Bearfoos.A!ml`); that's a false positive.
+
 Game files live in `%LOCALAPPDATA%\BetterLC\cache`, Lunar's settings in `cache\lunar`, and launcher choices in `%LOCALAPPDATA%\BetterLC\launcher.json`.
 
 The same exe is a command-line tool:
@@ -152,7 +154,7 @@ The same exe is a command-line tool:
 .\BetterLC.exe patch lunar.jar lunar-patched.jar
 ```
 
-### Building
+### Building it yourself
 
 With the .NET 10 SDK:
 
@@ -160,9 +162,7 @@ With the .NET 10 SDK:
 dotnet publish -c Release -o release
 ```
 
-This produces one self-contained `release\BetterLC.exe`; no .NET install is needed to run it.
-
-Releases are built by GitHub Actions: pushing a tag like `v1.2.0` builds the exe on Windows and publishes it, with its SHA-256 checksum, as a GitHub release. Windows Defender's machine-learning scanner has flagged unsigned builds before (`Bearfoos.A!ml`), which is a false positive. If it happens to your build, report it to Microsoft.
+That gives you the same single `release\BetterLC.exe`.
 
 ## Checking our work
 
