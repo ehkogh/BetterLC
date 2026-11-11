@@ -1,19 +1,23 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Styling;
+using Avalonia.Themes.Fluent;
 
 namespace BetterLC;
 
 internal static class Program
 {
-    private static readonly string DefaultCache = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BetterLC", "cache");
+    private static readonly string DefaultCache = Path.Combine(HostPlatform.DataRoot, "cache");
     private static readonly Uri DefaultServer = new("https://betterlc.ehko.dev");
 
     [STAThread]
     private static int Main(string[] args)
     {
+        PrepareDataRoot();
         if (args.Length == 0) return RunWindow();
-        if (!Console.IsOutputRedirected) AttachConsole(-1);
+        if (OperatingSystem.IsWindows() && !Console.IsOutputRedirected) AttachConsole(-1);
         try { return RunCliAsync(args).GetAwaiter().GetResult(); }
         catch (Exception ex)
         {
@@ -22,18 +26,39 @@ internal static class Program
         }
     }
 
-    private static int RunWindow()
+    private static int RunWindow() => AppBuilder.Configure<App>()
+        .UsePlatformDetect()
+        .WithInterFont()
+        .With(new MacOSPlatformOptions { ShowInDock = true })
+        .StartWithClassicDesktopLifetime([]);
+
+    private static void PrepareDataRoot()
     {
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.SetColorMode(SystemColorMode.System);
-        var form = new LauncherForm(DefaultCache);
-        var writer = new LineWriter(form.AppendLine);
-        Console.SetOut(writer);
-        Console.SetError(writer);
-        Application.Run(form);
-        return 0;
+        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(HostPlatform.DataRoot);
+        else Directory.CreateDirectory(HostPlatform.DataRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    private sealed class App : Application
+    {
+        public override void Initialize()
+        {
+            Name = "BetterLC";
+            RequestedThemeVariant = ThemeVariant.Default;
+            Styles.Add(new FluentTheme());
+        }
+
+        public override void OnFrameworkInitializationCompleted()
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                var window = new LauncherWindow(DefaultCache);
+                var writer = new LineWriter(window.AppendLine);
+                Console.SetOut(writer);
+                Console.SetError(writer);
+                desktop.MainWindow = window;
+            }
+            base.OnFrameworkInitializationCompleted();
+        }
     }
 
     private static async Task<int> RunCliAsync(string[] args)
@@ -107,9 +132,7 @@ internal static class Program
 
     internal static FileStream AcquireGameLock()
     {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BetterLC");
-        Directory.CreateDirectory(directory);
-        try { return new FileStream(Path.Combine(directory, "launcher.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        try { return new FileStream(Path.Combine(HostPlatform.DataRoot, "launcher.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
         catch (IOException) { throw new InvalidOperationException("Another BetterLC game is already running."); }
     }
 

@@ -9,8 +9,7 @@ internal sealed class LauncherSettings
     public ConnectionMode Mode { get; set; } = ConnectionMode.Offline;
     public string Server { get; set; } = "https://betterlc.ehko.dev";
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BetterLC", "launcher.json");
+    private static string FilePath => Path.Combine(HostPlatform.DataRoot, "launcher.json");
 
     public static LauncherSettings Load()
     {

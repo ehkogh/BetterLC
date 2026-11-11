@@ -2,11 +2,11 @@
 
 <h1 align="center">BetterLC</h1>
 
-<p align="center">A privacy-focused Windows launcher for Lunar Client.</p>
+<p align="center">A privacy-focused launcher for Lunar Client on Windows, macOS and Linux.</p>
 
 ---
 
-BetterLC starts Lunar Client without Lunar's own launcher and cuts off the data Lunar collects about you and your PC. It's one 27 MB executable with no installer. Your normal Lunar installation is left untouched.
+BetterLC starts Lunar Client without Lunar's own launcher and cuts off the data Lunar collects about you and your computer. It's a single program of about 24 MB with no installer. Your normal Lunar installation is left untouched.
 
 - [What Lunar Client collects](#what-lunar-client-collects)
 - [What BetterLC does about it](#what-betterlc-does-about-it)
@@ -107,22 +107,22 @@ Lunar's own launcher sends its own handshake. Its `LauncherHandshake` fields inc
 
 - **No official launcher.** BetterLC replaces it entirely, so none of section 8 is sent. Each launch uses a fresh random installation ID and profile, and reports the OS release as `unknown`.
 - **Sentry is off.** BetterLC patches both jars to blank the Sentry project address. An empty address disables the Sentry SDK: no error reports, traces or breadcrumbs. The `sentry-trace` header carries no trace ID.
-- **The analytics endpoint is dead.** BetterLC patches it to a closed local port, so batches fail on your PC and never leave it.
+- **The analytics endpoint is dead.** BetterLC patches it to a closed local port, so batches fail on your computer and never leave it.
 - **Styngr is off**, pointed at the same closed port.
-- **No ads or tracking headers on the metadata request.** BetterLC routes Lunar's web API through a small proxy on your PC. It removes `X-Installation-Id`, `X-Overwolf-Muid` and `sentry-trace` from every request. In the metadata it empties the ad carousel and promoted servers, and switches off the Discord and promotion banners and all Sentry handlers. Everything else passes through unchanged.
-- **No token left behind.** The game needs an account file containing your Minecraft access token; BetterLC writes it at launch and deletes it when the game closes. Your Lunar settings are kept between launches. Your Microsoft sign-in is stored encrypted with Windows' per-user protection (DPAPI).
+- **No ads or tracking headers on the metadata request.** BetterLC routes Lunar's web API through a small proxy on your computer. It removes `X-Installation-Id`, `X-Overwolf-Muid` and `sentry-trace` from every request. In the metadata it empties the ad carousel and promoted servers, and switches off the Discord and promotion banners and all Sentry handlers. Everything else passes through unchanged.
+- **No token left behind.** The game needs an account file containing your Minecraft access token; BetterLC writes it at launch and deletes it when the game closes. Your Lunar settings are kept between launches. Your Microsoft sign-in is saved for your user account only: encrypted with Windows' per-user protection (DPAPI) on Windows, and in a file only you can read on macOS and Linux.
 - **Patches survive updates.** They're applied by pattern rather than to one exact build, so most Lunar updates keep working. If the override hook or the Sentry address can't be found in a new Lunar build, BetterLC refuses to launch rather than run it unpatched.
 
 ### Choose where the game's connection goes
 
 | | **Offline** (default) | **BetterLC server** | **Lunar directly** |
 |---|---|---|---|
-| Handshake (section 1) | stays on your PC | scrubbed copy to Lunar, sent from the server | sent to Lunar as is |
-| Telemetry, location, settings and log uploads (section 2) | answered on your PC | answered by the server, never forwarded | sent to Lunar |
+| Handshake (section 1) | stays on your computer | scrubbed copy to Lunar, sent from the server | sent to Lunar as is |
+| Telemetry, location, settings and log uploads (section 2) | answered on your computer | answered by the server, never forwarded | sent to Lunar |
 | Remote profiling (section 3) | can't be triggered | can't be triggered (Lunar's pushes aren't passed on) | possible |
-| Lunar's login service | stand-in on your PC | relayed through the server | direct |
+| Lunar's login service | stand-in on your computer | relayed through the server | direct |
 
-- **Offline:** BetterLC runs a stand-in for Lunar's login and game services on your own PC (`127.0.0.1`). The game never opens Lunar's WebSocket services.
+- **Offline:** BetterLC runs a stand-in for Lunar's login and game services on your own computer (`127.0.0.1`). The game never opens Lunar's WebSocket services.
 - **BetterLC server:** the game connects to a BetterLCSync server, BetterLC's self-hosted companion server. It answers everything itself and keeps one link to Lunar that carries only the cosmetics data needed to show other players. Before forwarding the handshake, the server removes `hwid`, `overwolf_muid`, `installed_mods`, `gl_extensions`, GPU memory and `settings`. It still forwards your account identity, `installation_id` (random per launch), the OS and CPU strings, `language`, `canary_token`, `ichor_modules` and `location`.
 - **Lunar directly:** like the official client, minus everything in "In every mode" above.
 
@@ -138,40 +138,61 @@ Lunar's own launcher sends its own handshake. Its `LauncherHandshake` fields inc
 
 ## Using BetterLC
 
-Download `BetterLC.exe` from the [latest release](https://github.com/ehkogh/BetterLC/releases/latest) and run it. Pick a Minecraft version, loader and connection, then click **Launch**. The first launch shows a Microsoft one-time code; later launches reuse your saved sign-in, and **Sign out** removes it. You need a Minecraft: Java Edition account.
+Download the file for your system from the [latest release](https://github.com/ehkogh/BetterLC/releases/latest):
 
-Each release comes with a `.sha256` file you can check the download against. BetterLC isn't code-signed yet, so Windows may warn you the first time you run it. Windows Defender's machine-learning scanner has also flagged builds before (`Bearfoos.A!ml`); that's a false positive.
+| System | File |
+|---|---|
+| Windows | `BetterLC.exe` |
+| macOS (Apple Silicon) | `BetterLC-macos-apple-silicon.zip` |
+| macOS (Intel) | `BetterLC-macos-intel.zip` |
+| Linux (x64) | `BetterLC-linux-x64.tar.gz` |
 
-Game files live in `%LOCALAPPDATA%\BetterLC\cache`, Lunar's settings in `cache\lunar`, and launcher choices in `%LOCALAPPDATA%\BetterLC\launcher.json`.
+Open it, pick a Minecraft version, loader and connection, then click **Launch**. The first launch shows a Microsoft one-time code; later launches reuse your saved sign-in, and **Sign out** removes it. You need a Minecraft: Java Edition account. Lunar doesn't support ARM Linux, so neither can BetterLC.
 
-The same exe is a command-line tool:
+BetterLC isn't code-signed yet, so your system may warn you the first time:
 
-```powershell
-.\BetterLC.exe launch-version 1.8.9 lunar --mode offline
-.\BetterLC.exe launch-version 26.1.2 fabric --mode betterlc --server https://sync.example.com
-.\BetterLC.exe versions-json
-.\BetterLC.exe sign-out
-.\BetterLC.exe patch lunar.jar lunar-patched.jar
+- **Windows:** SmartScreen may say it's unrecognised; choose **More info → Run anyway**. Defender's machine-learning scanner has flagged builds before (`Bearfoos.A!ml`); that's a false positive.
+- **macOS:** unzip it and move **BetterLC** to Applications. The first time, right-click it and choose **Open**, or allow it under **System Settings → Privacy & Security**.
+- **Linux:** `tar -xzf BetterLC-linux-x64.tar.gz && ./BetterLC`
+
+Each release has a `SHA256SUMS` file you can check your download against.
+
+BetterLC keeps its files in one folder: game files in `cache`, Lunar's settings in `cache/lunar`, and launcher choices in `launcher.json`.
+
+| System | Folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\BetterLC` |
+| macOS | `~/Library/Application Support/BetterLC` |
+| Linux | `~/.local/share/BetterLC` |
+
+The same program is a command-line tool:
+
+```sh
+BetterLC launch-version 1.8.9 lunar --mode offline
+BetterLC launch-version 26.1.2 fabric --mode betterlc --server https://sync.example.com
+BetterLC versions-json
+BetterLC sign-out
+BetterLC patch lunar.jar lunar-patched.jar
 ```
 
 ### Building it yourself
 
-With the .NET 10 SDK:
+With the .NET 10 SDK, pick your system's runtime (`win-x64`, `osx-arm64`, `osx-x64` or `linux-x64`):
 
-```powershell
-dotnet publish -c Release -o release
+```sh
+dotnet publish -c Release -r win-x64 -o release
 ```
 
-That gives you the same single `release\BetterLC.exe`.
+That gives you the same single program in `release`.
 
 ## Checking our work
 
 You don't have to take our word for any of this:
 
-- **Read the jars.** After a launch they're in `%LOCALAPPDATA%\BetterLC\cache\original`. With a JDK installed, unzip one and run `javap -constants` on a class, e.g. `com.lunarclient.websocket.handshake.v1.Handshake`, to see its field names and numbers. Search the class files for strings like `ingest.sentry.io`, `analytics.lunarclientprod.com` or `ThreadModuleDump`.
-- **Compare patched and original.** `BetterLC.exe patch <original.jar> <out.jar>` reports what it changed. Diff the patched jar against the original in `cache\original`.
+- **Read the jars.** After a launch they're in `cache/original` inside BetterLC's folder. With a JDK installed, unzip one and run `javap -constants` on a class, e.g. `com.lunarclient.websocket.handshake.v1.Handshake`, to see its field names and numbers. Search the class files for strings like `ingest.sentry.io`, `analytics.lunarclientprod.com` or `ThreadModuleDump`.
+- **Compare patched and original.** `BetterLC patch <original.jar> <out.jar>` reports what it changed. Diff the patched jar against the original in `cache/original`.
 - **Watch the traffic.** Point the game at a logging WebSocket proxy with `-DserviceOverrideAssetServer=ws://127.0.0.1:<port>`. The timings in section 2 came from exactly that.
-- **Read the game log** at `%LOCALAPPDATA%\BetterLC\cache\multiver\logs\latest.log`. Lines like `[LC Analytics] Failed to send batch` show blocked telemetry failing locally.
+- **Read the game log** at `cache/multiver/logs/latest.log`. Lines like `[LC Analytics] Failed to send batch` show blocked telemetry failing locally.
 
 ## License
 

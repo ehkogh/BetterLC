@@ -161,7 +161,7 @@ public static class GameLauncher
         foreach (var setting in overrides) start.ArgumentList.Add(setting);
         start.ArgumentList.Add("-Djava.library.path=natives");
         start.ArgumentList.Add("-cp");
-        start.ArgumentList.Add(string.Join(';', game.ClassPath));
+        start.ArgumentList.Add(string.Join(Path.PathSeparator, game.ClassPath));
         start.ArgumentList.Add(game.MainClass);
 
         (string Key, string Value)[] arguments =

@@ -13,7 +13,7 @@ public static class VersionCatalog
         CancellationToken token = default)
     {
         var url = new Uri("https://api.lunarclientprod.com/launcher/metadata/versions/lunar?" +
-            $"os=win32&arch=x64&launcher_version=3.7.32-ow&installation_id={Uri.EscapeDataString(installationId)}");
+            $"os={HostPlatform.Os}&arch={HostPlatform.Arch}&launcher_version=3.7.32-ow&installation_id={Uri.EscapeDataString(installationId)}");
         using var metadata = await client.GetFromJsonAsync<JsonDocument>(url, token)
             ?? throw new InvalidDataException("Missing Lunar version metadata.");
         var versions = new List<AvailableVersion>();

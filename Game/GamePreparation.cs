@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Formats.Tar;
 using System.IO.Compression;
 
 namespace BetterLC;
@@ -23,9 +24,9 @@ public static class GamePreparation
         var request = new
         {
             installation_id = installationId,
-            os = "win32",
+            os = HostPlatform.Os,
             os_release = "unknown",
-            arch = "x64",
+            arch = HostPlatform.Arch,
             launcher_version = "3.7.32-ow",
             version = versionId,
             branch = "master",
@@ -38,7 +39,9 @@ public static class GamePreparation
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(token), cancellationToken: token);
         var root = json.RootElement;
         if (!root.TryGetProperty("success", out var success) || !success.GetBoolean())
-            throw new InvalidDataException("Lunar did not return a usable launch manifest.");
+            throw new InvalidDataException(root.TryGetProperty("error", out var error) &&
+                error.TryGetProperty("message", out var message) && message.GetString() is { Length: > 0 } text
+                ? text : "Lunar did not return a usable launch manifest.");
         var artifacts = root.GetProperty("launchTypeData").GetProperty("artifacts")
             .EnumerateArray().Select(x => new Artifact(
                 x.GetProperty("name").GetString()!,
@@ -104,22 +107,24 @@ public static class GamePreparation
             Path.Combine(cacheRoot, "textures"), token);
 
         var jre = root.GetProperty("jre");
-        var jreName = jre.GetProperty("executablePathInArchive")[0].GetString()!;
-        var javaPath = Path.Combine(cacheRoot, "jre", jreName, "bin", "java.exe");
+        var javaPath = JavaPath(Path.Combine(cacheRoot, "jre"),
+            jre.GetProperty("executablePathInArchive").EnumerateArray().Select(x => x.GetString()!));
         if (!File.Exists(javaPath))
         {
-            var jreZip = Path.Combine(cacheRoot, "downloads", "jre.zip");
-            Directory.CreateDirectory(Path.GetDirectoryName(jreZip)!);
-            var temp = jreZip + ".tmp";
+            var download = jre.GetProperty("download");
+            var extension = download.TryGetProperty("extension", out var ext) ? ext.GetString()! : "zip";
+            var archive = Path.Combine(cacheRoot, "downloads", "jre." + extension);
+            Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
+            var temp = archive + ".tmp";
             try
             {
-                using var download = await client.GetAsync(new Uri(jre.GetProperty("download").GetProperty("url").GetString()!),
+                using var jreResponse = await client.GetAsync(new Uri(download.GetProperty("url").GetString()!),
                     HttpCompletionOption.ResponseHeadersRead, token);
-                download.EnsureSuccessStatusCode();
+                jreResponse.EnsureSuccessStatusCode();
                 await using (var output = File.Create(temp))
-                    await download.Content.CopyToAsync(output, token);
-                File.Move(temp, jreZip, overwrite: true);
-                ZipFile.ExtractToDirectory(jreZip, Path.Combine(cacheRoot, "jre"), overwriteFiles: true);
+                    await jreResponse.Content.CopyToAsync(output, token);
+                File.Move(temp, archive, overwrite: true);
+                await ExtractAsync(archive, extension, Path.Combine(cacheRoot, "jre"), token);
             }
             finally { if (File.Exists(temp)) File.Delete(temp); }
         }
@@ -132,6 +137,28 @@ public static class GamePreparation
             jre.GetProperty("extraArguments").EnumerateArray().Select(x => x.GetString()!).ToArray(),
             artifacts.Where(x => x.Type == "CLASS_PATH").Select(x => x.Name).ToArray(),
             artifacts.Where(x => x.Type == "EXTERNAL_FILE").Select(x => x.Name).ToArray());
+    }
+
+    private static string JavaPath(string jreRoot, IEnumerable<string> parts)
+    {
+        var path = Path.Combine([jreRoot, .. parts]);
+        return OperatingSystem.IsWindows() && Path.GetFileName(path).Equals("javaw.exe", StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(Path.GetDirectoryName(path)!, "java.exe") : path;
+    }
+
+    private static async Task ExtractAsync(string archive, string extension, string destination, CancellationToken token)
+    {
+        Directory.CreateDirectory(destination);
+        if (extension == "zip")
+        {
+            ZipFile.ExtractToDirectory(archive, destination, overwriteFiles: true);
+            return;
+        }
+        if (extension is not ("tar.gz" or "tgz"))
+            throw new InvalidDataException($"Lunar sent a Java runtime as .{extension}, which BetterLC can't unpack.");
+        await using var file = File.OpenRead(archive);
+        await using var gzip = new GZipStream(file, CompressionMode.Decompress);
+        await TarFile.ExtractToDirectoryAsync(gzip, destination, overwriteFiles: true, token);
     }
 
     private sealed record Artifact(string Name, Uri Url, string Sha1, string Type);

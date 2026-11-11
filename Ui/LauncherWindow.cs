@@ -1,10 +1,17 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input.Platform;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform;
+using Avalonia.Threading;
 
 namespace BetterLC;
 
-internal sealed partial class LauncherForm : Form
+internal sealed partial class LauncherWindow : Window
 {
     private readonly LauncherSettings settings = LauncherSettings.Load();
     private readonly string cacheRoot;
@@ -12,29 +19,31 @@ internal sealed partial class LauncherForm : Form
     private bool running;
     private string authUrl = "https://www.microsoft.com/link";
     private string authCode = "";
+    private readonly List<string> lines = [];
 
-    private readonly ComboBox versionBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-    private readonly ComboBox moduleBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-    private readonly TextBox serverBox = new() { Dock = DockStyle.Fill };
-    private readonly ComboBox modeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private static readonly (ConnectionMode Mode, string Name)[] Modes =
     [
         (ConnectionMode.Offline, "Offline (local)"),
         (ConnectionMode.BetterLC, "BetterLC server"),
         (ConnectionMode.Lunar, "Lunar directly")
     ];
-    private readonly Button playButton = new() { Text = "Launch", AutoSize = true, Enabled = false };
-    private readonly Button refreshButton = new() { Text = "Refresh versions", AutoSize = true };
-    private readonly Label status = new() { Text = "Starting…", AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
-    private readonly FlowLayoutPanel authPanel = new() { AutoSize = true, Visible = false, WrapContents = false };
-    private readonly Label codeLabel = new() { AutoSize = true, Font = new Font(FontFamily.GenericMonospace, 11f, FontStyle.Bold), Anchor = AnchorStyles.Left };
-    private readonly Button signOutButton = new() { Text = "Sign out", AutoSize = true };
-    private readonly Label progressText = new() { Text = "Checking available versions…", AutoSize = true };
-    private readonly ProgressBar progress = new() { Dock = DockStyle.Fill, Style = ProgressBarStyle.Marquee, Height = 18 };
+    private static readonly FontFamily Mono = new("Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace");
+
+    private readonly ComboBox versionBox = Stretch(new ComboBox());
+    private readonly ComboBox moduleBox = Stretch(new ComboBox());
+    private readonly ComboBox modeBox = Stretch(new ComboBox { ItemsSource = Modes.Select(m => m.Name).ToArray() });
+    private readonly TextBox serverBox = new();
+    private readonly Button playButton = new() { Content = "Launch", IsEnabled = false, Classes = { "accent" } };
+    private readonly Button refreshButton = new() { Content = "Refresh versions" };
+    private readonly TextBlock status = new() { Text = "Starting…", FontWeight = FontWeight.Bold };
+    private readonly StackPanel authPanel = new() { Orientation = Orientation.Horizontal, Spacing = 8, IsVisible = false };
+    private readonly TextBlock codeLabel = new() { FontFamily = Mono, FontSize = 16, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button signOutButton = new() { Content = "Sign out" };
+    private readonly TextBlock progressText = new() { Text = "Checking available versions…", TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly ProgressBar progress = new() { IsIndeterminate = true, Height = 18, Minimum = 0, Maximum = 100 };
     private readonly TextBox log = new()
     {
-        Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
-        Font = new Font(FontFamily.GenericMonospace, 9f), BackColor = SystemColors.Window
+        IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, FontFamily = Mono, FontSize = 12
     };
 
     [GeneratedRegex(@"Open (https://\S+) and enter code: ([A-Z0-9]+)")]
@@ -42,112 +51,129 @@ internal sealed partial class LauncherForm : Form
     [GeneratedRegex(@"(\d+)/(\d+)")]
     private static partial Regex CountLine();
 
-    public LauncherForm(string cacheRoot)
+    public LauncherWindow(string cacheRoot)
     {
         this.cacheRoot = cacheRoot;
-        Text = "BetterLC";
-        Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
-        Font = SystemFonts.MessageBoxFont!;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(600, 460);
-        Size = new Size(740, 560);
-        StartPosition = FormStartPosition.CenterScreen;
-        BuildLayout();
+        Title = "BetterLC";
+        Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://BetterLC/Assets/logo.png")));
+        MinWidth = 600;
+        MinHeight = 480;
+        Width = 740;
+        Height = 580;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Content = BuildLayout();
 
         serverBox.Text = settings.Server;
-        foreach (var mode in Modes) modeBox.Items.Add(mode.Name);
-        modeBox.SelectedIndexChanged += (_, _) => ShowMode();
+        modeBox.SelectionChanged += (_, _) => ShowMode();
         modeBox.SelectedIndex = Math.Max(0, Array.FindIndex(Modes, m => m.Mode == settings.Mode));
-        versionBox.SelectedIndexChanged += (_, _) => ShowModules();
+        versionBox.SelectionChanged += (_, _) => ShowModules();
         playButton.Click += (_, _) => Launch();
         refreshButton.Click += (_, _) => RefreshVersions();
         signOutButton.Click += (_, _) => SignOut();
-        Shown += (_, _) => RefreshVersions();
-        FormClosing += (_, e) =>
+        Opened += (_, _) => RefreshVersions();
+        Closing += (_, e) =>
         {
             if (!running) return;
             e.Cancel = true;
-            WindowState = FormWindowState.Minimized;
+            WindowState = WindowState.Minimized;
         };
     }
 
-    private void BuildLayout()
+    private static T Stretch<T>(T control) where T : Control
     {
-        var game = new TableLayoutPanel { ColumnCount = 2, Dock = DockStyle.Fill, AutoSize = true };
-        game.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        game.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        AddRow(game, "Minecraft version:", versionBox);
-        AddRow(game, "Loader:", moduleBox);
-        AddRow(game, "Connection:", modeBox);
-        AddRow(game, "BetterLC server:", serverBox);
-        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = Padding.Empty };
-        actions.Controls.AddRange([playButton, refreshButton]);
-        game.Controls.Add(actions);
-        game.SetColumnSpan(actions, 2);
+        control.HorizontalAlignment = HorizontalAlignment.Stretch;
+        return control;
+    }
 
-        var openPage = new Button { Text = "Open sign-in page", AutoSize = true };
+    private Control BuildLayout()
+    {
+        var game = new Grid { ColumnDefinitions = new("Auto,*"), RowDefinitions = new("Auto,Auto,Auto,Auto,Auto"), RowSpacing = 8, ColumnSpacing = 12 };
+        AddRow(game, 0, "Minecraft version", versionBox);
+        AddRow(game, 1, "Loader", moduleBox);
+        AddRow(game, 2, "Connection", modeBox);
+        AddRow(game, 3, "BetterLC server", serverBox);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { playButton, refreshButton } };
+        Grid.SetRow(actions, 4);
+        Grid.SetColumnSpan(actions, 2);
+        game.Children.Add(actions);
+
+        var openPage = new Button { Content = "Open sign-in page" };
         openPage.Click += (_, _) => Process.Start(new ProcessStartInfo(authUrl) { UseShellExecute = true });
-        var copyCode = new Button { Text = "Copy code", AutoSize = true };
-        copyCode.Click += (_, _) => { if (authCode.Length > 0) Clipboard.SetText(authCode); };
-        authPanel.Controls.AddRange([new Label { Text = "Sign-in code:", AutoSize = true, Anchor = AnchorStyles.Left },
+        var copyCode = new Button { Content = "Copy code" };
+        copyCode.Click += async (_, _) =>
+        {
+            if (authCode.Length > 0 && Clipboard is { } clipboard) await clipboard.SetTextAsync(authCode);
+        };
+        authPanel.Children.AddRange([new TextBlock { Text = "Sign-in code:", VerticalAlignment = VerticalAlignment.Center },
             codeLabel, openPage, copyCode]);
-        var account = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
-        account.Controls.AddRange([status, authPanel, signOutButton]);
+        var account = new StackPanel { Spacing = 8, Children = { status, authPanel, signOutButton } };
 
-        var activity = new TableLayoutPanel { ColumnCount = 1, RowCount = 3, Dock = DockStyle.Fill };
-        activity.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        activity.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        activity.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        activity.Controls.Add(progressText);
-        activity.Controls.Add(progress);
-        activity.Controls.Add(log);
+        var activity = new DockPanel();
+        DockPanel.SetDock(progressText, Dock.Top);
+        DockPanel.SetDock(progress, Dock.Top);
+        progress.Margin = new Thickness(0, 6, 0, 8);
+        activity.Children.AddRange([progressText, progress, log]);
 
-        var root = new TableLayoutPanel { ColumnCount = 1, RowCount = 3, Dock = DockStyle.Fill, Padding = new Padding(10) };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.Controls.Add(Group("Game", game));
-        root.Controls.Add(Group("Microsoft account", account));
-        root.Controls.Add(Group("Activity", activity));
-        Controls.Add(root);
+        var root = new DockPanel { Margin = new Thickness(12) };
+        var gameGroup = Group("Game", game);
+        var accountGroup = Group("Microsoft account", account);
+        DockPanel.SetDock(gameGroup, Dock.Top);
+        DockPanel.SetDock(accountGroup, Dock.Top);
+        root.Children.AddRange([gameGroup, accountGroup, Group("Activity", activity)]);
+        return root;
     }
 
-    private static void AddRow(TableLayoutPanel table, string label, Control control)
+    private static void AddRow(Grid grid, int row, string label, Control control)
     {
-        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left });
-        table.Controls.Add(control);
+        var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetRow(text, row);
+        Grid.SetRow(control, row);
+        Grid.SetColumn(control, 1);
+        grid.Children.AddRange([text, control]);
     }
 
-    private static GroupBox Group(string title, Control content)
+    private static Control Group(string title, Control content) => new Border
     {
-        var box = new GroupBox { Text = title, Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(8) };
-        box.Controls.Add(content);
-        return box;
-    }
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(6),
+        Padding = new Thickness(12),
+        Margin = new Thickness(0, 0, 0, 10),
+        BorderBrush = new SolidColorBrush(Color.FromArgb(0x50, 0x80, 0x80, 0x80)),
+        Child = new DockPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 8), [DockPanel.DockProperty] = Dock.Top },
+                content
+            }
+        }
+    };
 
     public void AppendLine(string line)
     {
-        if (InvokeRequired)
+        if (!Dispatcher.UIThread.CheckAccess())
         {
-            BeginInvoke(() => AppendLine(line));
+            Dispatcher.UIThread.Post(() => AppendLine(line));
             return;
         }
         line = line.Trim();
         if (line.Length == 0) return;
-        if (log.Lines.Length > 400) log.Lines = log.Lines[^300..];
-        log.AppendText(line + Environment.NewLine);
+        lines.Add(line);
+        if (lines.Count > 400) lines.RemoveRange(0, lines.Count - 300);
+        log.Text = string.Join(Environment.NewLine, lines);
+        log.CaretIndex = log.Text.Length;
 
         if (AuthLine().Match(line) is { Success: true } auth)
         {
             authUrl = auth.Groups[1].Value;
             authCode = auth.Groups[2].Value;
             codeLabel.Text = authCode;
-            authPanel.Visible = true;
+            authPanel.IsVisible = true;
             SetStatus("Sign in", "Enter this code on Microsoft's sign-in page.");
-            progress.Style = ProgressBarStyle.Marquee;
+            progress.IsIndeterminate = true;
         }
         else if (line.StartsWith("Reusing saved Microsoft sign-in")) SetStatus("Signing in", "Using your saved Microsoft sign-in…");
-        else if (line.StartsWith("Signed in as ")) { authPanel.Visible = false; SetStatus("Starting game", line); }
+        else if (line.StartsWith("Signed in as ")) { authPanel.IsVisible = false; SetStatus("Starting game", line); }
         else if (line.StartsWith("Connected to BetterLC server") || line.StartsWith("Offline mode") ||
                  line.StartsWith("Lunar mode")) SetStatus("Starting game", line);
         else if (line.StartsWith("Game started")) { SetProgress(100); SetStatus("Game running", line); }
@@ -171,57 +197,54 @@ internal sealed partial class LauncherForm : Form
 
     private void SetProgress(int value)
     {
-        progress.Style = ProgressBarStyle.Continuous;
+        progress.IsIndeterminate = false;
         progress.Value = Math.Clamp(value, 0, 100);
     }
 
     private async void RefreshVersions()
     {
         if (running) return;
-        refreshButton.Enabled = playButton.Enabled = false;
-        progress.Style = ProgressBarStyle.Marquee;
+        refreshButton.IsEnabled = playButton.IsEnabled = false;
+        progress.IsIndeterminate = true;
         SetStatus("Loading versions", "Checking Lunar's current version list…");
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
             versions = await VersionCatalog.LoadAsync(client, Guid.NewGuid().ToString());
-            versionBox.BeginUpdate();
-            versionBox.Items.Clear();
-            foreach (var version in versions) versionBox.Items.Add(version.Id);
-            versionBox.EndUpdate();
+            versionBox.ItemsSource = versions.Select(v => v.Id).ToArray();
             var index = Array.FindIndex(versions, v => v.Id == settings.Version);
             versionBox.SelectedIndex = index >= 0 ? index : 0;
-            playButton.Enabled = versions.Length > 0;
+            playButton.IsEnabled = versions.Length > 0;
             SetProgress(0);
             SetStatus("Ready", $"{versions.Length} Minecraft versions available.");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
-                                       or InvalidDataException or KeyNotFoundException)
+                                       or InvalidDataException or KeyNotFoundException or PlatformNotSupportedException)
         {
             SetProgress(0);
             SetStatus("Version check failed", "Could not load the version list. Try Refresh versions.");
             AppendLine(ex.Message);
         }
-        finally { refreshButton.Enabled = true; }
+        finally { refreshButton.IsEnabled = true; }
     }
 
     private ConnectionMode SelectedMode => Modes[Math.Max(0, modeBox.SelectedIndex)].Mode;
 
     private void ShowMode()
     {
-        serverBox.Enabled = !running && SelectedMode == ConnectionMode.BetterLC;
+        serverBox.IsEnabled = !running && SelectedMode == ConnectionMode.BetterLC;
     }
 
     private void ShowModules()
     {
-        moduleBox.Items.Clear();
+        moduleBox.ItemsSource = null;
         if (versionBox.SelectedIndex < 0) return;
         var version = versions[versionBox.SelectedIndex];
-        foreach (var module in version.Modules) moduleBox.Items.Add(module.Name);
+        moduleBox.ItemsSource = version.Modules.Select(m => m.Name).ToArray();
         var chosen = settings.Modules.TryGetValue(version.Id, out var saved)
             ? Array.FindIndex(version.Modules, m => m.Id == saved) : -1;
         if (chosen < 0) chosen = Math.Max(0, Array.FindIndex(version.Modules, m => m.IsDefault));
-        if (moduleBox.Items.Count > 0) moduleBox.SelectedIndex = chosen;
+        if (version.Modules.Length > 0) moduleBox.SelectedIndex = chosen;
     }
 
     private async void Launch()
@@ -230,7 +253,7 @@ internal sealed partial class LauncherForm : Form
         var mode = SelectedMode;
         Uri? server = null;
         if (mode == ConnectionMode.BetterLC &&
-            (!Uri.TryCreate(serverBox.Text.Trim(), UriKind.Absolute, out server) || server.Scheme != Uri.UriSchemeHttps))
+            (!Uri.TryCreate(serverBox.Text?.Trim(), UriKind.Absolute, out server) || server.Scheme != Uri.UriSchemeHttps))
         {
             SetStatus("BetterLC server", "Enter an HTTPS server address.");
             return;
@@ -244,7 +267,8 @@ internal sealed partial class LauncherForm : Form
         settings.Save();
 
         SetRunning(true);
-        log.Clear();
+        lines.Clear();
+        log.Text = "";
         SetStatus("Preparing", $"Preparing Minecraft {version.Id} ({module.Name})…");
         try
         {
@@ -273,11 +297,11 @@ internal sealed partial class LauncherForm : Form
     {
         running = value;
         foreach (var control in new Control[] { versionBox, moduleBox, modeBox, refreshButton, signOutButton })
-            control.Enabled = !value;
+            control.IsEnabled = !value;
         ShowMode();
-        playButton.Enabled = !value && versions.Length > 0;
-        authPanel.Visible = false;
-        if (value) progress.Style = ProgressBarStyle.Marquee;
+        playButton.IsEnabled = !value && versions.Length > 0;
+        authPanel.IsVisible = false;
+        if (value) progress.IsIndeterminate = true;
     }
 
     private void SignOut()
