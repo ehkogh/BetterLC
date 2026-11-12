@@ -103,8 +103,8 @@ jobs:
           mkdir -p "$root/usr/bin" "$root/DEBIAN"
           ln -s /opt/betterlc/BetterLC "$root/usr/bin/betterlc"
           sed "s/{{VERSION}}/$VERSION/g" packaging/linux/control > "$root/DEBIAN/control"
-          dpkg-deb --root-owner-group --build "$root" dist/BetterLC-linux-x64.deb
-          dpkg-deb --info dist/BetterLC-linux-x64.deb
+          dpkg-deb -Zxz --root-owner-group --build "$root" dist/BetterLC-linux-x64.deb
+          dpkg-deb --info dist/BetterLC-linux-x64.deb && dpkg-deb --contents dist/BetterLC-linux-x64.deb
 
       - uses: actions/upload-artifact@v7
         with:
