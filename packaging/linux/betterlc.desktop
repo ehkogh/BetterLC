@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=BetterLC
+GenericName=Minecraft Launcher
+Comment=Privacy-focused launcher for Lunar Client
+Exec=/opt/betterlc/BetterLC
+Icon=betterlc
+Terminal=false
+Categories=Game;
+StartupWMClass=BetterLC

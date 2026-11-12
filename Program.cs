@@ -15,9 +15,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        PrepareDataRoot();
         if (args.Length == 0) return RunWindow();
         if (OperatingSystem.IsWindows() && !Console.IsOutputRedirected) AttachConsole(-1);
+        if (HostPlatform.DataWarning is { } warning) Console.Error.WriteLine(warning);
         try { return RunCliAsync(args).GetAwaiter().GetResult(); }
         catch (Exception ex)
         {
@@ -30,13 +30,8 @@ internal static class Program
         .UsePlatformDetect()
         .WithInterFont()
         .With(new MacOSPlatformOptions { ShowInDock = true })
+        .With(new X11PlatformOptions { WmClass = "BetterLC" })
         .StartWithClassicDesktopLifetime([]);
-
-    private static void PrepareDataRoot()
-    {
-        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(HostPlatform.DataRoot);
-        else Directory.CreateDirectory(HostPlatform.DataRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-    }
 
     private sealed class App : Application
     {
@@ -56,6 +51,7 @@ internal static class Program
                 Console.SetOut(writer);
                 Console.SetError(writer);
                 desktop.MainWindow = window;
+                if (HostPlatform.DataWarning is { } warning) window.AppendLine(warning);
             }
             base.OnFrameworkInitializationCompleted();
         }

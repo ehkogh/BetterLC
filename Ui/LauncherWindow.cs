@@ -54,7 +54,7 @@ internal sealed partial class LauncherWindow : Window
     public LauncherWindow(string cacheRoot)
     {
         this.cacheRoot = cacheRoot;
-        Title = "BetterLC";
+        Title = HostPlatform.IsPortable ? "BetterLC (portable)" : "BetterLC";
         Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://BetterLC/Assets/logo.png")));
         MinWidth = 600;
         MinHeight = 480;

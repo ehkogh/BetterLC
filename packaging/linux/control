@@ -1,0 +1,11 @@
+Package: betterlc
+Version: {{VERSION}}
+Section: games
+Priority: optional
+Architecture: amd64
+Depends: libc6, libx11-6, libice6, libsm6, libfontconfig1
+Maintainer: BetterLC contributors <me@ehko.dev>
+Homepage: https://github.com/ehkogh/BetterLC
+Description: Privacy-focused launcher for Lunar Client
+ Starts Lunar Client without Lunar's own launcher and cuts off the
+ data Lunar collects about you and your computer.

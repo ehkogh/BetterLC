@@ -24,9 +24,9 @@ jobs:
             os: ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -35,8 +35,10 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           [[ "$version" =~ ^[0-9] ]] || version=0.0.0
+          echo "VERSION=$version" >> "$GITHUB_ENV"
           dotnet publish -c Release -r ${{ matrix.rid }} -o publish -p:Version="$version"
-          mkdir dist
+          mkdir dist portable
+          echo 'BetterLC keeps its data in the "BetterLC Data" folder next to it while this file exists.' > portable/portable
 
       - name: Smoke test
         if: matrix.rid != 'osx-x64'
@@ -47,15 +49,21 @@ jobs:
 
       - name: Package for Windows
         if: startsWith(matrix.rid, 'win')
-        shell: bash
-        run: cp publish/BetterLC.exe dist/BetterLC.exe
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Q "/DVersion=$env:VERSION" packaging\windows\BetterLC.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory staging\BetterLC | Out-Null
+          Copy-Item publish\BetterLC.exe, portable\portable staging\BetterLC
+          Compress-Archive staging\BetterLC dist\BetterLC-windows-portable.zip
 
       - name: Package for macOS
         if: startsWith(matrix.rid, 'osx')
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          [[ "$version" =~ ^[0-9] ]] || version=0.0.0
-          app=dist/BetterLC.app
+          name=BetterLC-macos-${{ matrix.rid == 'osx-arm64' && 'apple-silicon' || 'intel' }}
+          app=build/BetterLC.app
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" icon.iconset
           cp publish/BetterLC "$app/Contents/MacOS/BetterLC"
           for size in 16 32 128 256; do
@@ -63,18 +71,42 @@ jobs:
             sips -z $((size * 2)) $((size * 2)) Assets/logo.png --out icon.iconset/icon_${size}x${size}@2x.png >/dev/null
           done
           iconutil -c icns icon.iconset -o "$app/Contents/Resources/BetterLC.icns"
-          sed "s/{{VERSION}}/$version/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
-          codesign --force --deep --sign - "$app"
-          (cd dist && ditto -c -k --keepParent BetterLC.app "BetterLC-macos-${{ matrix.rid == 'osx-arm64' && 'apple-silicon' || 'intel' }}.zip")
-          rm -rf "$app"
+          sed "s/{{VERSION}}/$VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
+
+          mkdir -p staging/portable/BetterLC staging/dmg
+          cp -R "$app" staging/portable/BetterLC/
+          cp portable/portable staging/portable/BetterLC/BetterLC.app/Contents/Resources/portable
+          codesign --force --deep --sign - staging/portable/BetterLC/BetterLC.app
+          (cd staging/portable && ditto -c -k --keepParent BetterLC "../../dist/$name-portable.zip")
+
+          cp -R "$app" staging/dmg/
+          codesign --force --deep --sign - staging/dmg/BetterLC.app
+          ln -s /Applications staging/dmg/Applications
+          for attempt in 1 2 3; do
+            hdiutil create -volname BetterLC -srcfolder staging/dmg -ov -format UDZO "dist/$name.dmg" && break
+            sleep 5
+          done
+          test -f "dist/$name.dmg"
 
       - name: Package for Linux
         if: startsWith(matrix.rid, 'linux')
         run: |
           chmod +x publish/BetterLC
-          tar -czf dist/BetterLC-linux-x64.tar.gz -C publish BetterLC
+          mkdir -p staging/BetterLC
+          cp publish/BetterLC portable/portable staging/BetterLC/
+          tar -czf dist/BetterLC-linux-x64-portable.tar.gz -C staging BetterLC
 
-      - uses: actions/upload-artifact@v4
+          root=deb
+          install -Dm755 publish/BetterLC "$root/opt/betterlc/BetterLC"
+          install -Dm644 packaging/linux/betterlc.desktop "$root/usr/share/applications/betterlc.desktop"
+          install -Dm644 Assets/logo.png "$root/usr/share/icons/hicolor/256x256/apps/betterlc.png"
+          mkdir -p "$root/usr/bin" "$root/DEBIAN"
+          ln -s /opt/betterlc/BetterLC "$root/usr/bin/betterlc"
+          sed "s/{{VERSION}}/$VERSION/g" packaging/linux/control > "$root/DEBIAN/control"
+          dpkg-deb --root-owner-group --build "$root" dist/BetterLC-linux-x64.deb
+          dpkg-deb --info dist/BetterLC-linux-x64.deb
+
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.rid }}
           path: dist/*
@@ -84,7 +116,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

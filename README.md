@@ -138,32 +138,37 @@ Lunar's own launcher sends its own handshake. Its `LauncherHandshake` fields inc
 
 ## Using BetterLC
 
-Download the file for your system from the [latest release](https://github.com/ehkogh/BetterLC/releases/latest):
+Download BetterLC from the [latest release](https://github.com/ehkogh/BetterLC/releases/latest). Each system has two versions:
 
-| System | File |
-|---|---|
-| Windows | `BetterLC.exe` |
-| macOS (Apple Silicon) | `BetterLC-macos-apple-silicon.zip` |
-| macOS (Intel) | `BetterLC-macos-intel.zip` |
-| Linux (x64) | `BetterLC-linux-x64.tar.gz` |
+- **Installer:** BetterLC becomes a normal app on your computer, in the Start menu, Applications or your app menu.
+- **Portable:** nothing is installed. BetterLC keeps everything (game files, settings and your sign-in) in a `BetterLC Data` folder next to it, so you can carry the whole folder around, for example on a USB drive.
 
-Open it, pick a Minecraft version, loader and connection, then click **Launch**. The first launch shows a Microsoft one-time code; later launches reuse your saved sign-in, and **Sign out** removes it. You need a Minecraft: Java Edition account. Lunar doesn't support ARM Linux, so neither can BetterLC.
+| System | Installer | Portable |
+|---|---|---|
+| Windows | `BetterLC-windows-setup.exe` | `BetterLC-windows-portable.zip` |
+| macOS (Apple Silicon) | `BetterLC-macos-apple-silicon.dmg` | `BetterLC-macos-apple-silicon-portable.zip` |
+| macOS (Intel) | `BetterLC-macos-intel.dmg` | `BetterLC-macos-intel-portable.zip` |
+| Linux (x64) | `BetterLC-linux-x64.deb` (Debian, Ubuntu, Mint, Pop!_OS) | `BetterLC-linux-x64-portable.tar.gz` |
+
+Open BetterLC, pick a Minecraft version, loader and connection, then click **Launch**. The first launch shows a Microsoft one-time code; later launches reuse your saved sign-in, and **Sign out** removes it. You need a Minecraft: Java Edition account. Lunar doesn't support ARM Linux, so neither can BetterLC.
 
 BetterLC isn't code-signed yet, so your system may warn you the first time:
 
-- **Windows:** SmartScreen may say it's unrecognised; choose **More info → Run anyway**. Defender's machine-learning scanner has flagged builds before (`Bearfoos.A!ml`); that's a false positive.
-- **macOS:** unzip it and move **BetterLC** to Applications. The first time, right-click it and choose **Open**, or allow it under **System Settings → Privacy & Security**.
-- **Linux:** `tar -xzf BetterLC-linux-x64.tar.gz && ./BetterLC`
+- **Windows:** SmartScreen may say it's unrecognised; choose **More info → Run anyway**. Defender's machine-learning scanner has flagged builds before (`Bearfoos.A!ml`); that's a false positive. The installer doesn't need administrator rights, and uninstalling (from **Settings → Apps**) asks whether to delete your game files and sign-in too.
+- **macOS:** open the `.dmg` and drag **BetterLC** to Applications, or unzip the portable version and keep its folder anywhere except Downloads. The first time, right-click BetterLC and choose **Open**, or allow it under **System Settings → Privacy & Security**.
+- **Linux:** install the `.deb` with `sudo apt install ./BetterLC-linux-x64.deb`, or unpack the portable version with `tar -xzf BetterLC-linux-x64-portable.tar.gz` and run `BetterLC/BetterLC`.
 
 Each release has a `SHA256SUMS` file you can check your download against.
 
-BetterLC keeps its files in one folder: game files in `cache`, Lunar's settings in `cache/lunar`, and launcher choices in `launcher.json`.
+BetterLC keeps game files in `cache`, Lunar's settings in `cache/lunar`, and launcher choices in `launcher.json`. The portable version keeps them in `BetterLC Data`; the installed version uses:
 
 | System | Folder |
 |---|---|
 | Windows | `%LOCALAPPDATA%\BetterLC` |
 | macOS | `~/Library/Application Support/BetterLC` |
 | Linux | `~/.local/share/BetterLC` |
+
+A portable copy is a normal copy with a file named `portable` next to it (inside `BetterLC.app/Contents/Resources` on macOS). Delete that file to make it use the installed location instead. On Windows your sign-in is tied to your user account, so a portable copy moved to another computer asks you to sign in again.
 
 The same program is a command-line tool:
 
