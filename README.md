@@ -6,7 +6,7 @@
 
 ---
 
-BetterLC starts Lunar Client without Lunar's own launcher and cuts off the data Lunar collects about you and your computer. It's a single program of about 24 MB with no installer. Your normal Lunar installation is left untouched.
+BetterLC starts Lunar Client without Lunar's own launcher and cuts off the data Lunar collects about you and your computer. It's a single program of about 24 MB that you can install or run portable on Windows, macOS and Linux. Your normal Lunar installation is left untouched.
 
 - [What Lunar Client collects](#what-lunar-client-collects)
 - [What BetterLC does about it](#what-betterlc-does-about-it)
